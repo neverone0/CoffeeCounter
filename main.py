@@ -6,17 +6,41 @@ from lcd_screen import ST7920
 from mfrc522 import SimpleMFRC522
 from current_sensor import MCP3201
 import time
+import pandas as pd
+import threading
+import shutil
+import os
+import logging
+from logging.handlers import RotatingFileHandler
 
-print("HERE!")
+class MonotonicFilter(logging.Filter):
+    def filter(self, record):
+        record.monotonic = f"{time.monotonic():.6f}"
+        return True
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.propagate = False
+file_handler = RotatingFileHandler("CoffeeCounter.log",maxBytes=1_000_000,backupCount=5)
+file_handler.setLevel(logging.INFO)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.WARNING)
+formatter = logging.Formatter("%(asctime)s - %(monotonic)s - %(levelname)s - %(message)s")
+console_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
 COFFEE_PRICE_PER_SEC = 0.1
+PRICE_PER_DOSE = 0.5
+LOW_BALANCE_THRESHOLD = 2.0
+MIN_BALANCE = -2.0
 
 CS_PIN = 7
 RELAY_PIN = 12
+
 MSB_THRESHOLD = 100
-MSB_THRESHOLD_2GRINDER = 200
-ON_TIME = 10
-ON_TIME_2 = 5
-SMALL_COFFEE_TIME = 7.5
+ON_TIME = 45
+SINGLE_DOSE_TIME = 7.5
 
 GPIO.setmode(GPIO.BOARD)
 GPIO.setup(CS_PIN, GPIO.OUT)
@@ -25,121 +49,122 @@ GPIO.output(CS_PIN, 1)
 GPIO.setup(RELAY_PIN, GPIO.OUT)
 GPIO.output(RELAY_PIN, 0)
 
+BALANCESHEET_PATH = "./balance_sheet.csv"
+TEMP_BALANCESHEET_PATH = "./balance_sheet_temp.csv"
+BACKUP_LOCATION = "."
+BACKUP_TIMER = 7200 # Once two hours
+LAST_BACKUP_TIME = None
+
+MAINTENANCE_MODE = False
+
+def backup_csv():
+    backup_path = f"{BACKUP_LOCATION}/Backup/balance_sheet_backup_{time.time()}.csv"
+    try:
+        shutil.copy(BALANCESHEET_PATH, backup_path)
+    except Exception as e:
+        logger.error(f"CSV backup failed: {e}")
+        logger.error(f"Last successful backup time: {LAST_BACKUP_TIME}")
+    else:
+        logger.info(f"Backup CSV saved to {backup_path}")
+        LAST_BACKUP_TIME = time.time()
+
+
 reader = SimpleMFRC522()
 lcd_screen = ST7920()
 cur_sensor = MCP3201()
-print("Start system")
+logger.info("Starting Coffee Counter")
 lastUser = ""
+
+backup_csv()
+
+balanceDF  = pd.read_csv(BALANCESHEET_PATH, sep=",", header=0)
 while (1):
+    if MAINTENANCE_MODE:
+        # TODO: Add logic for balance top up
+        pass
+
+    if ((LAST_BACKUP_TIME is None) or ((time.time() - LAST_BACKUP_TIME) > BACKUP_TIMER)):
+        backup_csv()
     try:
         print("Wait for tag...!")
-        lcd_screen.text_string("Wait for tag...!  ", ST7920.LCD_LINE0)
+        lcd_screen.text_string(f"Scan Tag! ({PRICE_PER_DOSE}CHF/Dose)  ", ST7920.LCD_LINE0)
         lcd_screen.text_string("                  ", ST7920.LCD_LINE1)
         lcd_screen.text_string("Blame: " + lastUser, ST7920.LCD_LINE1)
-        rfid, text = reader.read();
+        rfid, text = reader.read()
         print(rfid)
         time.sleep(0.1)
 
+        username = balanceDF.loc[rfid, "Name"]
+        balance = balanceDF.loc[rfid, "Balance"]
+        price =  PRICE_PER_DOSE if df.isnull()[rfid, "Price"] else balanceDF.loc[rfid, "Price"]
+        lcd_screen.text_string(f"Hello {username}", ST7920.LCD_LINE0)
+        time.sleep(1)
 
-        for id, name, balance, comment in cur:
-            print(f"Name: {name}")
-            lcd_screen.text_string("Hello " + name, ST7920.LCD_LINE0)
-            balance_msg = "Balance: %.2fCHF" % balance
-            lcd_screen.text_string(balance_msg, ST7920.LCD_LINE1)
-            print(balance_msg)
-            time.sleep(1.5)
-            lcd_screen.text_string(balance_msg, ST7920.LCD_LINE1)
-            if balance < -2.0:
-                time.sleep(2)
-                lcd_screen.text_string("Low balance!      ", ST7920.LCD_LINE0)
-                lcd_screen.text_string("                  ", ST7920.LCD_LINE1)
-                time.sleep(1)
-                break
-            start_time = time.time()
-            end_time = start_time + ON_TIME
-            remaining_time = end_time - time.time()
-            display_time = -1
-            GPIO.output(RELAY_PIN, 1)
-            high_current_duration = 0
-            double_grinding = 1
-            while remaining_time > 0:
-                if (int(remaining_time) != display_time):
-                    display_time = int(remaining_time)
-                    display_time_msg = "Time left: %us" % display_time
-                    lcd_screen.text_string(display_time_msg, ST7920.LCD_LINE1)
+        if balance<MIN_BALANCE:
+            lcd_screen.text_string("!! Balance too low, please top up before use !!", ST7920.LCD_LINE_1)
+            raise Exception
+        elif balance < LOW_BALANCE_THRESHOLD:
+            lcd_screen.text_string("!! Low Balance, please top up soon !!", ST7920.LCD_LINE_0)
 
-                    I_MSB = cur_sensor.readADC_MSB()
-                    time_before_usage = time.time()
-                    tmp_high_current_duration = 0
-                    current_msg = "Current: %.2fA" % I_MSB
-                    # print(current_msg)
-                    if I_MSB >= MSB_THRESHOLD:
-                        lcd_screen.text_string("Grinding 1x...       ", ST7920.LCD_LINE1)
-                        lastUser = name
+        lcd_screen.text_string(f"Balance: {balance:.2f}CHF", ST7920.LCD_LINE1)
 
-                    while (I_MSB >= MSB_THRESHOLD):
-                        tmp_high_current_duration = time.time() - time_before_usage
-                        I_MSB = cur_sensor.readADC_MSB()
-                        if I_MSB >= MSB_THRESHOLD_2GRINDER and double_grinding <= 2:
-                            double_grinding = 2
-                            lcd_screen.text_string("Grinding 2x...       ", ST7920.LCD_LINE1)
+        time.sleep(0.5)
 
-                        current_msg = "Current: %.2fA" % I_MSB
-                        # print(current_msg)
-                        end_time = time.time() + ON_TIME_2
+        lcd_screen.text_string("Activating Relay", ST7920.LCD_LINE0)
+        # display_thread = threading.Thread(target=lcd_screen.countdown, args=(time.time(), ON_TIME, ST7920.LCD_Line1))
+        GPIO.output(RELAY_PIN, 1)
 
-                    high_current_duration = high_current_duration + tmp_high_current_duration
-                # time.sleep(0.01)
-                remaining_time = end_time - time.time()
-            GPIO.output(RELAY_PIN, 0)
-            lcd_screen.text_string("Grinding time: " + str(int(high_current_duration)), ST7920.LCD_LINE0)
-            coffee_price = 0
+        start_time = time.time()
+        end_time = start_time + ON_TIME
 
-            if high_current_duration > 0:
-                if high_current_duration < SMALL_COFFEE_TIME:
-                    coffee_price = 0.5 * double_grinding
-                if high_current_duration >= SMALL_COFFEE_TIME:
-                    coffee_price = 1.0 * double_grinding
-            # coffee_price = int(high_current_duration)*COFFEE_PRICE_PER_SEC
-            coffee_price_msg = "Price: %0.2fCHF" % coffee_price
-            lcd_screen.text_string(coffee_price_msg, ST7920.LCD_LINE1)
+        nbr_coffees = 0
+
+        cur_sensor_thread = threading.Thread(target=cur_sensor.continuous_uptime, args=(cur_sensor,MSB_THRESHOLD,start_time))
+        cur_sensor_thread.start()
+
+        while  time.time() < end_time:
+            rem_time = end_time - time.time()
+            lcd_screen.text_string(f"#Coffees: {nbr_coffees}, Time left: {rem_time:.0f}s", ST7920.LCD_LINE1)
+            uptime = cur_sensor.continuous_uptime
+            est_nbr_doses = (uptime%SINGLE_DOSE_TIME)+1
+            status = cur_sensor.status
+            lcd_screen.text_string(f"{status} , Est. # Doses: {est_nbr_doses}", ST7920.LCD_LINE0)
+
+        lcd_screen.text_string("Deactivating Relay", ST7920.LCD_LINE0)
+        lcd_screen.text_string("", ST7920.LCD_LINE0)
+        cur_sensor.continuous_read = False
+        cur_sensor_thread.join()
+        GPIO.output(RELAY_PIN, 0)
+        total_uptime = cur_sensor.continuous_uptime
+        nbr_doses = (total_uptime%SINGLE_DOSE_TIME)+1
+        price = nbr_doses * PRICE_PER_DOSE
+
+        # update df and write to balance sheet
+        new_balance = balance-price
+        balanceDF.loc[rfid, "Balance"] = new_balance
+        balanceDF.loc[rfid, "LastUse"] = time.time()
+        balanceDF.loc[rfid, "Counter"] = balanceDF.loc[rfid, "Counter"] + 1
+        shutil.copyfile(BALANCESHEET_PATH, TEMP_BALANCESHEET_PATH)
+        try:
+            balanceDF.to_csv(BALANCESHEET_PATH, sep=",", header=True, index=False)
+        except:
+            lcd_screen.text_string(f"!! Error occured during balance update !!", ST7920.LCD_LINE0)
+            lcd_screen.text_string("!! Please note your consumption and contact admin !!", ST7920.LCD_LINE0)
             time.sleep(2)
-            balance = balance - coffee_price
-            coffee_price_msg = "Balance: %0.2fCHF" % balance
-            lcd_screen.text_string(coffee_price_msg, ST7920.LCD_LINE0)
-            lcd_screen.text_string("Enjoy!", ST7920.LCD_LINE1)
-            time.sleep(2)
-            conn.close()
-            conn = mariadb.connect(
-                user="u518823022_cehmke",  # "cehmke",
-                password="CCMicrorobot2021!",  # "CCMicrorobot2024",
-                host="sql703.main-hosting.eu",  # "mysql1.ethz.ch",
-                database="u518823022_cehmke")  # cehmke")
-            print("Connected!")
-            cur = conn.cursor()
+        finally:
+            if os.path.isfile(TEMP_BALANCESHEET_PATH):
+                os.remove(TEMP_BALANCESHEET_PATH)
 
-            if coffee_price > 0:
-                print("Update db...")
-                update_text = "UPDATE overview SET balance = %.2f WHERE rfid=?" % balance
-                cur.execute(update_text, (rfid,))
+        lcd_screen.text_string(f"Total: {nbr_doses} doses, {price:.2f}CHF", ST7920.LCD_LINE0)
+        lcd_screen.text_string(f"New Balance: {new_balance:.2f} CHF", ST7920.LCD_LINE1)
+        time.sleep(2)
 
-            cur.execute("SELECT id,name,balance,comment FROM overview WHERE rfid=?", (rfid,))
-
-            for id, name, balance, comment in cur:
-                time.sleep(2)
-                coffee_price_msg = "Balance2: %0.2fCHF" % balance
-                lcd_screen.text_string(coffee_price_msg, ST7920.LCD_LINE0)
-                print(coffee_price_msg)
-                break
-            conn.close()
-
-            break
+        lcd_screen.text_string("Than you for choosing MSRL Coffee Counter!", ST7920.LCD_LINE0)
+        lcd_screen.text_string("Enjoy your break!", ST7920.LCD_LINE1)
 
         time.sleep(2)
-    except mariadb.Error as e:
-        print(f"Error connecting to MariaDB Platform: {e}")
-        lcd_screen.text_string("ERRORDB!", ST7920.LCD_LINE0)
-        lcd_screen.text_string("ERRORDB!", ST7920.LCD_LINE1)
-        time.sleep(2)
-    #    sys.exit(1)
+
+    except Exception as e:
+
+        time.sleep(1)
 
