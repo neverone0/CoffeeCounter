@@ -1,6 +1,7 @@
 {
   "logfile": "./CoffeeCounter.log",
   "mode": "normal",
+  "mode_ack"  : "normal",
   "pending_task": null,
   "task_args": null,
   "last_backup": null,

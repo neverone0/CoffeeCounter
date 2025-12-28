@@ -3,7 +3,7 @@
 import sys
 import RPi.GPIO as GPIO
 from lcd_screen import ST7920
-from mfrc522 import SimpleMFRC522
+from pirc522 import RFID
 from current_sensor import MCP3201
 import time
 import pandas as pd
@@ -12,6 +12,7 @@ import shutil
 import os
 import logging
 import cowsay
+import json
 from logging.handlers import RotatingFileHandler
 
 class MonotonicFilter(logging.Filter):
@@ -19,7 +20,20 @@ class MonotonicFilter(logging.Filter):
         record.monotonic = f"{time.monotonic():.6f}"
         return True
 
+LOGGER = None
 
+def setup_logging():
+    LOGGER = logging.getLogger(__name__)
+    LOGGER.setLevel(logging.INFO)
+    LOGGER.propagate = False
+    file_handler = RotatingFileHandler(STATE["logfile"], maxBytes=1_000_000, backupCount=5)
+    file_handler.setLevel(logging.INFO)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    formatter = logging.Formatter("%(asctime)s - %(monotonic)s - %(levelname)s - %(message)s")
+    console_handler.setFormatter(formatter)
+    LOGGER.addHandler(file_handler)
+    LOGGER.addHandler(console_handler)
 
 COFFEE_PRICE_PER_SEC = 0.1
 PRICE_PER_DOSE = 0.5
@@ -60,17 +74,18 @@ BACKUP_LOCATION = "."
 BACKUP_TIMER = 7200 # Once two hours
 
 def backup_csv():
+    LOGGER.warning("Backing up balance sheet...")
     backup_path = f"{BACKUP_LOCATION}/Backup/balance_sheet_backup_{time.time()}.csv"
     try:
         shutil.copy(BALANCESHEET_PATH, backup_path)
     except Exception as e:
-        logger.error(f"CSV backup failed: {e}")
+        LOGGER.error(f"CSV backup failed: {e}")
         if STATE["last_backup"] is None:
-            logger.error(f"No previous Backups")
+            LOGGER.error(f"No previous Backups")
         else:
-            logger.error(f"Last successful backup time: {STATE["last_backup"]}")
+            LOGGER.error(f"Last successful backup time: {STATE['last_backup']}")
     else:
-        logger.info(f"Backup CSV saved to {backup_path}")
+        LOGGER.info(f"Backup CSV saved to {backup_path}")
         STATE["last_backup"] = time.time()
         save_state(STATE)
 
@@ -78,60 +93,101 @@ def update_balances(path_to_csv):
     """ Update balancesheet using another csv file. By default unknown IDs will generate a new entry
     TODO: Maybe ask before creating new identiies
     """
-    pass
+    current_balances = pd.read_csv(BALANCESHEET_PATH)
+    balance_changes_df = pd.read_csv(path_to_csv)
+    unknown_entries = []
+
+    for index, row in balance_changes_df.iterrows():
+        tag_id = row["TagId"]
+        if tag_id in current_balances.loc[:,"TagId"]:
+            # update balances
+            curr_balance =  current_balances.loc[row["TagId"], "Balance"]
+            current_balances.loc[row["TagId"], "Balance"] = curr_balance + row["BalanceChange"]
+            # Set Name if is not yet set, i.e. a new user
+            if pd.isnull(current_balances.loc[row["TagId"], "Name"]):
+                current_balances.loc[row["TagId"], "Name"] = row["Name"]
+            # Set special price is necessary
+            if not pd.isnull(row["Price"]):
+                # cannot change the
+                current_balances.loc[row["TagId"], "Price"] = row["Price"]
+        else:
+            unknown_entries.append()
+
 
 def main():
-    reader = SimpleMFRC522()
+    setup_logging()
+
+    reader = RFID(pin_irq = None)
+    # Board Pins: SDA-24 , SCK-23, MOSI-19, MISO-21, IRQ-None, GND-6/9/20/25, RST-22, 3.3V-1/17
     lcd_screen = ST7920()
     cur_sensor = MCP3201()
     lastUser = ""
 
-    logger.warn(cowsay.get_output_string('cow', "Starting Coffee Counter"))
+    LOGGER.warning(cowsay.get_output_string('cow', "Starting Coffee Counter"))
 
     backup_csv()
 
+    LOGGER.info("loading balancesheet to memory")
     balanceDF  = pd.read_csv(BALANCESHEET_PATH, sep=",", header=0)
 
     while (1):
-        if MAINTENANCE_MODE:
-            # TODO: Add logic for balance top up
-            pass
+        STATE = load_state()
+        if STATE["mode"] == "maintenance":
+            STATE["mode_ack"]= STATE["mode"]
+            save_state(STATE)
+            lcd_screen.text_string("Maintenance mode active", ST7920.LCD_LINE0)
+            lcd_screen.text_string("Coffee currently unavailabe", ST7920.LCD_LINE1)
+            # Suspend while in maintenance mode
+            while STATE["mode"] == "maintenance":
+                STATE = load_state()
+                pass
+            balanceDF = pd.read_csv(BALANCESHEET_PATH, sep=",", header=0)
+            STATE["mode_ack"]= STATE["mode"]
 
         if ((STATE["last_backup"] is None) or ((time.time() - STATE["last_backup"]) > BACKUP_TIMER)):
             backup_csv()
+
         try:
-            print("Wait for tag...!")
-            lcd_screen.text_string(f"Scan Tag! ({PRICE_PER_DOSE}CHF/Dose)  ", ST7920.LCD_LINE0)
+            lcd_screen.text_string(f"Scan Tag! ({price}CHF/Dose)  ", ST7920.LCD_LINE0)
             lcd_screen.text_string("                  ", ST7920.LCD_LINE1)
             lcd_screen.text_string("Blame: " + lastUser, ST7920.LCD_LINE1)
-            rfid, text = reader.read()
-            print(rfid)
+            uid = reader.get_uid()
+            if uid is None:
+                raise Exception("No tag detected")
+
             time.sleep(0.1)
 
-            username = balanceDF.loc[rfid, "Name"]
-            balance = balanceDF.loc[rfid, "Balance"]
-            price =  PRICE_PER_DOSE if df.isnull()[rfid, "Price"] else balanceDF.loc[rfid, "Price"]
+            username = balanceDF.loc[uid, "Name"]
+            balance = balanceDF.loc[uid, "Balance"]
+            price =  PRICE_PER_DOSE if pd.isnull(balanceDF.loc[uid, "Price"]) else balanceDF.loc[uid, "Price"]
             lcd_screen.text_string(f"Hello {username}", ST7920.LCD_LINE0)
+            LOGGER.info(f"Tag detected: {uid}, Balance: {balance}, Price: {price}")
+
             time.sleep(1)
 
             if balance<MIN_BALANCE:
                 lcd_screen.text_string("!! Balance too low, please top up before use !!", ST7920.LCD_LINE_1)
-                raise Exception
+                LOGGER.error(f"Balance too low: {balance}")
+                raise Exception("Balance too low")
             elif balance < LOW_BALANCE_THRESHOLD:
                 lcd_screen.text_string("!! Low Balance, please top up soon !!", ST7920.LCD_LINE_0)
+                LOGGER.warning(f"Low Balance warning: {balance}")
 
             lcd_screen.text_string(f"Balance: {balance:.2f}CHF", ST7920.LCD_LINE1)
 
             time.sleep(0.5)
 
             lcd_screen.text_string("Activating Relay", ST7920.LCD_LINE0)
-            # display_thread = threading.Thread(target=lcd_screen.countdown, args=(time.time(), ON_TIME, ST7920.LCD_Line1))
+            LOGGER.info(f"Activating Relay")
+
             GPIO.output(RELAY_PIN, 1)
 
             start_time = time.time()
             end_time = start_time + ON_TIME
 
             nbr_coffees = 0
+
+            LOGGER.info(f"Starting current sensor thread")
 
             cur_sensor_thread = threading.Thread(target=cur_sensor.continuous_uptime, args=(cur_sensor,MSB_THRESHOLD,start_time))
             cur_sensor_thread.start()
@@ -146,54 +202,62 @@ def main():
 
             lcd_screen.text_string("Deactivating Relay", ST7920.LCD_LINE0)
             lcd_screen.text_string("", ST7920.LCD_LINE0)
+
+            LOGGER.info(f"Deactivating Relay, waiting for current sensor to join")
+
             cur_sensor.continuous_read = False
             cur_sensor_thread.join()
             GPIO.output(RELAY_PIN, 0)
+
+            LOGGER.info(f"Current sensor thread joined, Relay deactivated")
+
             total_uptime = cur_sensor.continuous_uptime
             nbr_doses = (total_uptime%SINGLE_DOSE_TIME)+1
-            price = nbr_doses * PRICE_PER_DOSE
+            total_cost = nbr_doses * price
+
 
             # update df and write to balance sheet
-            new_balance = balance-price
-            balanceDF.loc[rfid, "Balance"] = new_balance
-            balanceDF.loc[rfid, "LastUse"] = time.time()
-            balanceDF.loc[rfid, "Counter"] = balanceDF.loc[rfid, "Counter"] + 1
+            new_balance = round(balance-total_cost , 2)
+            balanceDF.loc[uid, "Balance"] = new_balance
+            balanceDF.loc[uid, "LastUse"] = time.time()
+            balanceDF.loc[uid, "Counter"] = balanceDF.loc[uid, "Counter"] + 1
+
+            LOGGER.info(f"Summary: Total uptime: {total_uptime:.0f}, Nbr. of Doses: {nbr_doses}, Total cost: {total_cost:.2f}CHF, New Balance: {new_balance:.2f}CHF")
+            LOGGER.info(f"Trying to update balance sheet, creating temporary balancesheet at {TEMP_BALANCESHEET_PATH}")
+
             shutil.copyfile(BALANCESHEET_PATH, TEMP_BALANCESHEET_PATH)
             try:
                 balanceDF.to_csv(BALANCESHEET_PATH, sep=",", header=True, index=False)
-            except:
+            except Exception as e:
                 lcd_screen.text_string(f"!! Error occured during balance update !!", ST7920.LCD_LINE0)
                 lcd_screen.text_string("!! Please note your consumption and contact admin !!", ST7920.LCD_LINE0)
+                LOGGER.error(f"Error occured during balance update. Manual adjustment needed for {username}({uid}) (see above): \n{e}")
                 time.sleep(2)
             finally:
+                LOGGER.info("Delete temporary balancesheet")
                 if os.path.isfile(TEMP_BALANCESHEET_PATH):
                     os.remove(TEMP_BALANCESHEET_PATH)
 
-            lcd_screen.text_string(f"Total: {nbr_doses} doses, {price:.2f}CHF", ST7920.LCD_LINE0)
+            lcd_screen.text_string(f"Total: {nbr_doses} doses, {total_cost:.2f}CHF", ST7920.LCD_LINE0)
             lcd_screen.text_string(f"New Balance: {new_balance:.2f} CHF", ST7920.LCD_LINE1)
             time.sleep(2)
 
             lcd_screen.text_string("Than you for choosing MSRL Coffee Counter!", ST7920.LCD_LINE0)
             lcd_screen.text_string("Enjoy your break!", ST7920.LCD_LINE1)
 
+            LOGGER.info(f"Process finished for {username}({uid})")
+
             time.sleep(2)
 
+        except KeyboardInterrupt:
+            break
         except Exception as e:
-
             time.sleep(1)
 
-if __name__ == "__main__":
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    file_handler = RotatingFileHandler(STATE["logfile"], maxBytes=1_000_000, backupCount=5)
-    file_handler.setLevel(logging.INFO)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)
-    formatter = logging.Formatter("%(asctime)s - %(monotonic)s - %(levelname)s - %(message)s")
-    console_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
 
+    LOGGER.warning(cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup'))
+    GPIO.cleanup()
+
+if __name__ == "__main__":
     main()
 
