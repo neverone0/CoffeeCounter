@@ -44,13 +44,6 @@ MSB_THRESHOLD = 100
 ON_TIME = 45
 SINGLE_DOSE_TIME = 7.5
 
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(CS_CURRENT_PIN, GPIO.OUT)
-GPIO.output(CS_CURRENT_PIN, GPIO.HIGH)
-
-GPIO.setup(RELAY_PIN, GPIO.OUT)
-GPIO.output(RELAY_PIN, GPIO.LOW)
-
 def load_state():
     if not os.path.exists(STATE_FILE):
         raise FileNotFoundError(STATE_FILE)
@@ -133,6 +126,13 @@ def get_new_user_dict(tag_uid):
     return {"TagId": tag_uid, "Name": f"NewUser{randrange(99)}", "Balance": 0.0, "LastUse": None, "Price": None, "Counter": 0}
 
 def main():
+    GPIO.setmode(GPIO.BOARD)
+    GPIO.setup(CS_CURRENT_PIN, GPIO.OUT)
+    GPIO.output(CS_CURRENT_PIN, GPIO.HIGH)
+
+    GPIO.setup(RELAY_PIN, GPIO.OUT)
+    GPIO.output(RELAY_PIN, GPIO.LOW)
+
     setup_logging()
 
     LOGGER.info("Creating Data and Backup folders (if necessary)")
@@ -287,11 +287,16 @@ def main():
             LOGGER.warning(f"Loop Terminated by Keyboard Interrupt")
             break
         except ImportError as e:
-            LOGGER.info(f"{e}")
-            time.sleep(1)
+            try:
+                LOGGER.info(f"{e}")
+                time.sleep(1)
+            except KeyboardInterrupt:
+                pass
         except Exception as e:
-            LOGGER.error(f"Unexpected error:\n {e}")
-            time.sleep(1)
+            try:
+                LOGGER.error(f"Unexpected error:\n {e}")
+            except KeyboardInterrupt:
+                pass
 
 
     LOGGER.warning(cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup.\n Have a MOOtiful day.'))
