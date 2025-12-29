@@ -17,10 +17,6 @@ from logging.handlers import RotatingFileHandler
 from random import randrange
 from pathlib import Path
 
-class MonotonicFilter(logging.Filter):
-    def filter(self, record):
-        record.monotonic = f"{time.monotonic():.6f}"
-        return True
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +27,7 @@ def setup_logging():
     file_handler.setLevel(logging.INFO)
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.WARNING)
-    formatter = logging.Formatter("%(asctime)s - %(monotonic)s - %(levelname)s - %(message)s")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     console_handler.setFormatter(formatter)
     LOGGER.addHandler(file_handler)
     LOGGER.addHandler(console_handler)
