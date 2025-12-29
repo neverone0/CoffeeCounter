@@ -288,12 +288,13 @@ def main():
             break
         except ImportError as e:
             LOGGER.info(f"{e}")
+            time.sleep(5)
         except Exception as e:
             LOGGER.error(f"Unexpected error:\n {e}")
             time.sleep(1)
 
 
-    LOGGER.warning(cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup'))
+    LOGGER.warning(cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup.\n Have a MOOtiful day.'))
     GPIO.cleanup()
 
 if __name__ == "__main__":
