@@ -26,7 +26,7 @@ def setup_logging():
     file_handler = RotatingFileHandler(STATE["logfile"], maxBytes=1_000_000, backupCount=5)
     file_handler.setLevel(logging.INFO)
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)
+    console_handler.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     console_handler.setFormatter(formatter)
     LOGGER.addHandler(file_handler)
@@ -89,7 +89,6 @@ def backup_csv():
 
 def update_balances(path_to_csv):
     """ Update balancesheet using another csv file. By default unknown IDs will generate a new entry
-    TODO: Maybe ask before creating new identiies
     """
     LOGGER.info("Updating balance sheet...")
     balanceDF = pd.read_csv(BALANCESHEET_PATH)
@@ -179,7 +178,8 @@ def main():
             lcd.text("Blame: " + lastUser, 2)
             uid = reader.get_uid()
             if uid is None:
-                raise Exception("No tag detected")
+                LOGGER.info("No Tag present")
+                raise Exception()
 
             time.sleep(0.1)
 
