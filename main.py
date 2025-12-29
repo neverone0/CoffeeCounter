@@ -68,9 +68,9 @@ def save_state(state):
 STATE_FILE = "./state.json"
 STATE = load_state()
 
-BALANCESHEET_PATH = "./balance_sheet.csv"
-TEMP_BALANCESHEET_PATH = "./balance_sheet_temp.csv"
-BACKUP_LOCATION = "."
+BALANCESHEET_PATH = "./Data/balance_sheet.csv"
+TEMP_BALANCESHEET_PATH = "./Data/balance_sheet_temp.csv"
+BACKUP_LOCATION = "./Data"
 BACKUP_TIMER = 7200 # Once two hours
 
 def backup_csv():
