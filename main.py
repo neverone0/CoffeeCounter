@@ -68,14 +68,14 @@ def save_state(state):
 STATE_FILE = "./state.json"
 STATE = load_state()
 
-BALANCESHEET_PATH = "./Data/balance_sheet.csv"
-TEMP_BALANCESHEET_PATH = "./Data/balance_sheet_temp.csv"
+BALANCESHEET_PATH = "./Data/Balances.csv"
+TEMP_BALANCESHEET_PATH = "./Data/Balances_temp.csv"
 BACKUP_LOCATION = "./Data"
 BACKUP_TIMER = 7200 # Once two hours
 
 def backup_csv():
     LOGGER.warning("Backing up balance sheet...")
-    backup_path = f"{BACKUP_LOCATION}/Backup/balance_sheet_backup_{time.time()}.csv"
+    backup_path = f"{BACKUP_LOCATION}/Backup/Balances_backup_{time.time()}.csv"
     try:
         shutil.copy(BALANCESHEET_PATH, backup_path)
     except Exception as e:
