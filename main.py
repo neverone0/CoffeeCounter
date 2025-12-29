@@ -148,7 +148,7 @@ def main():
     cur_sensor = MCP3201()
     lastUser = ""
 
-    LOGGER.warning(cowsay.get_output_string('cow', "Starting Coffee Counter"))
+    LOGGER.warning(f"\n\n{cowsay.get_output_string('cow', "Starting Coffee Counter")}\n\n")
 
     backup_csv()
 
@@ -162,12 +162,15 @@ def main():
             save_state(STATE)
             lcd.text("Maintenance mode active", 1)
             lcd.text("Coffee currently unavailabe", 2)
+            LOGGER.warning(f"Maintenance mode active. Suspending loop.")
             # Suspend while in maintenance mode
             while STATE["mode"] == "maintenance":
                 STATE = load_state()
                 pass
+            LOGGER.warning(f"Loop continued. Reload balancesheet to memory.")
             balanceDF = pd.read_csv(BALANCESHEET_PATH, sep=",", header=0)
             STATE["mode_ack"]= STATE["mode"]
+            LOGGER.warning(f"Exiting maintenance mode.")
 
         if ((STATE["last_backup"] is None) or ((time.time() - STATE["last_backup"]) > BACKUP_TIMER)):
             backup_csv()
@@ -177,6 +180,7 @@ def main():
             lcd.text("                  ", 2)
             lcd.text("Blame: " + lastUser, 2)
             uid = reader.get_uid()
+            LOGGER.info(f"UID: {uid}")
             if uid is None:
                 LOGGER.info("No Tag present")
                 raise Exception()
