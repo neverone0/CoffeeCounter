@@ -20,10 +20,9 @@ class MonotonicFilter(logging.Filter):
         record.monotonic = f"{time.monotonic():.6f}"
         return True
 
-LOGGER = None
+LOGGER = logging.getLogger(__name__)
 
 def setup_logging():
-    LOGGER = logging.getLogger(__name__)
     LOGGER.setLevel(logging.INFO)
     LOGGER.propagate = False
     file_handler = RotatingFileHandler(STATE["logfile"], maxBytes=1_000_000, backupCount=5)
@@ -93,25 +92,44 @@ def update_balances(path_to_csv):
     """ Update balancesheet using another csv file. By default unknown IDs will generate a new entry
     TODO: Maybe ask before creating new identiies
     """
-    current_balances = pd.read_csv(BALANCESHEET_PATH)
+    LOGGER.info("Updating balance sheet...")
+    balanceDF = pd.read_csv(BALANCESHEET_PATH)
     balance_changes_df = pd.read_csv(path_to_csv)
     unknown_entries = []
 
     for index, row in balance_changes_df.iterrows():
         tag_id = row["TagId"]
-        if tag_id in current_balances.loc[:,"TagId"]:
+        if tag_id in balanceDF.loc[:,"TagId"]:
             # update balances
-            curr_balance =  current_balances.loc[row["TagId"], "Balance"]
-            current_balances.loc[row["TagId"], "Balance"] = curr_balance + row["BalanceChange"]
-            # Set Name if is not yet set, i.e. a new user
-            if pd.isnull(current_balances.loc[row["TagId"], "Name"]):
-                current_balances.loc[row["TagId"], "Name"] = row["Name"]
-            # Set special price is necessary
+            curr_balance =  balanceDF.loc[row["TagId"], "Balance"]
+            new_balance = curr_balance + row["BalanceChange"]
+            balanceDF.loc[row["TagId"], "Balance"] = new_balance
+            LOGGER.warning(f"Update {tag_id} Balance: {curr_balance} -> {new_balance} ({row['BalanceChange']})")
+            # Set Name if exists in update file
+            if not pd.isnull(row["Name"]):
+                current_name = balanceDF.loc[row["TagId"], "Name"]
+                balanceDF.loc[row["TagId"], "Name"] = row["Name"]
+                LOGGER.warning(f"Update {tag_id} Name: {current_name} -> {row['Name']}")
+            # Set special price if exists in update file
             if not pd.isnull(row["Price"]):
-                # cannot change the
-                current_balances.loc[row["TagId"], "Price"] = row["Price"]
+                current_price = balanceDF.loc[row["TagId"], "Price"]
+                balanceDF.loc[row["TagId"], "Price"] = row["Price"]
+                LOGGER.warning(f"Update {tag_id} Price: {current_price} -> {row['Price']}")
         else:
-            unknown_entries.append()
+            unknown_entries.append(row.todict)
+            LOGGER.error(f"Tag id {tag_id} not found (Name: {row['Name']}, BalanceChange: {row['BalanceChange']}), Price {row['Price']}")
+
+    shutil.copyfile(BALANCESHEET_PATH, TEMP_BALANCESHEET_PATH)
+    try:
+        balanceDF.to_csv(BALANCESHEET_PATH, sep=",", header=True, index=False)
+    except Exception as e:
+        LOGGER.error(f"Error occured during balance update. Please try again. \n {e}")
+    finally:
+        LOGGER.info("Delete temporary balancesheet")
+        if os.path.isfile(TEMP_BALANCESHEET_PATH):
+            os.remove(TEMP_BALANCESHEET_PATH)
+
+    LOGGER.info("Finished updating balance sheet.")
 
 
 def main():
@@ -156,6 +174,8 @@ def main():
                 raise Exception("No tag detected")
 
             time.sleep(0.1)
+
+
 
             username = balanceDF.loc[uid, "Name"]
             balance = balanceDF.loc[uid, "Balance"]
