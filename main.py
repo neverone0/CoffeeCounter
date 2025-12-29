@@ -288,7 +288,7 @@ def main():
             break
         except ImportError as e:
             LOGGER.info(f"{e}")
-            time.sleep(5)
+            time.sleep(1)
         except Exception as e:
             LOGGER.error(f"Unexpected error:\n {e}")
             time.sleep(1)
