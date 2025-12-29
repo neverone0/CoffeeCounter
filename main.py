@@ -2,7 +2,7 @@
 # Module Imports
 import sys
 import RPi.GPIO as GPIO
-from lcd_screen import ST7920
+from rpi_lcd import LCD
 from pirc522 import RFID
 from current_sensor import MCP3201
 import time
@@ -46,8 +46,6 @@ RELAY_PIN = 12
 MSB_THRESHOLD = 100
 ON_TIME = 45
 SINGLE_DOSE_TIME = 7.5
-
-NEW_USER = {"Tag"}
 
 GPIO.setmode(GPIO.BOARD)
 GPIO.setup(CS_PIN, GPIO.OUT)
@@ -142,7 +140,7 @@ def main():
 
     reader = RFID(pin_irq = None)
     # Board Pins: SDA-24 , SCK-23, MOSI-19, MISO-21, IRQ-None, GND-6/9/20/25, RST-22, 3.3V-1/17
-    lcd_screen = ST7920()
+    lcd = LCD()
     cur_sensor = MCP3201()
     lastUser = ""
 
@@ -158,8 +156,8 @@ def main():
         if STATE["mode"] == "maintenance":
             STATE["mode_ack"]= STATE["mode"]
             save_state(STATE)
-            lcd_screen.text_string("Maintenance mode active", ST7920.LCD_LINE0)
-            lcd_screen.text_string("Coffee currently unavailabe", ST7920.LCD_LINE1)
+            lcd.text("Maintenance mode active", 1)
+            lcd.text("Coffee currently unavailabe", 2)
             # Suspend while in maintenance mode
             while STATE["mode"] == "maintenance":
                 STATE = load_state()
@@ -171,9 +169,9 @@ def main():
             backup_csv()
 
         try:
-            lcd_screen.text_string(f"Scan Tag! ({price}CHF/Dose)  ", ST7920.LCD_LINE0)
-            lcd_screen.text_string("                  ", ST7920.LCD_LINE1)
-            lcd_screen.text_string("Blame: " + lastUser, ST7920.LCD_LINE1)
+            lcd.text(f"Scan Tag! ({price}CHF/Dose)  ", 1)
+            lcd.text("                  ", 2)
+            lcd.text("Blame: " + lastUser, 2)
             uid = reader.get_uid()
             if uid is None:
                 raise Exception("No tag detected")
@@ -186,24 +184,24 @@ def main():
             username = balanceDF.loc[uid, "Name"]
             balance = balanceDF.loc[uid, "Balance"]
             price =  PRICE_PER_DOSE if pd.isnull(balanceDF.loc[uid, "Price"]) else balanceDF.loc[uid, "Price"]
-            lcd_screen.text_string(f"Hello {username}", ST7920.LCD_LINE0)
+            lcd.text(f"Hello {username}", 1)
             LOGGER.info(f"Tag detected: {uid}, Balance: {balance}, Price: {price}")
 
             time.sleep(1)
 
             if balance<MIN_BALANCE:
-                lcd_screen.text_string("!! Balance too low, please top up before use !!", ST7920.LCD_LINE_1)
+                lcd.text("!! Balance too low, please top up before use !!", 2)
                 LOGGER.error(f"Balance too low: {balance}")
                 raise Exception("Balance too low")
             elif balance < LOW_BALANCE_THRESHOLD:
-                lcd_screen.text_string("!! Low Balance, please top up soon !!", ST7920.LCD_LINE_0)
+                lcd.text("!! Low Balance, please top up soon !!", 1)
                 LOGGER.warning(f"Low Balance warning: {balance}")
 
-            lcd_screen.text_string(f"Balance: {balance:.2f}CHF", ST7920.LCD_LINE1)
+            lcd.text(f"Balance: {balance:.2f}CHF", 2)
             time.sleep(0.5)
 
 
-            lcd_screen.text_string("Activating Relay", ST7920.LCD_LINE0)
+            lcd.text("Activating Relay", 1)
             LOGGER.info(f"Activating Relay")
 
             GPIO.output(RELAY_PIN, 1)
@@ -220,14 +218,14 @@ def main():
 
             while  time.time() < end_time:
                 rem_time = end_time - time.time()
-                lcd_screen.text_string(f"#Coffees: {nbr_coffees}, Time left: {rem_time:.0f}s", ST7920.LCD_LINE1)
+                lcd.text(f"#Coffees: {nbr_coffees}, Time left: {rem_time:.0f}s", 2)
                 uptime = cur_sensor.continuous_uptime
                 est_nbr_doses = (uptime%SINGLE_DOSE_TIME)+1
                 status = cur_sensor.status
-                lcd_screen.text_string(f"{status} , Est. # Doses: {est_nbr_doses}", ST7920.LCD_LINE0)
+                lcd.text(f"{status} , Est. # Doses: {est_nbr_doses}", 1)
 
-            lcd_screen.text_string("Deactivating Relay", ST7920.LCD_LINE0)
-            lcd_screen.text_string("", ST7920.LCD_LINE0)
+            lcd.text("Deactivating Relay", 1)
+            lcd.text("", 1)
 
             LOGGER.info(f"Deactivating Relay, waiting for current sensor to join")
 
@@ -255,8 +253,8 @@ def main():
             try:
                 balanceDF.to_csv(BALANCESHEET_PATH, sep=",", header=True, index=False)
             except Exception as e:
-                lcd_screen.text_string(f"!! Error occured during balance update !!", ST7920.LCD_LINE0)
-                lcd_screen.text_string("!! Please note your consumption and contact admin !!", ST7920.LCD_LINE0)
+                lcd.text(f"!! Error occured during balance update !!", 1)
+                lcd.text("!! Please note your consumption and contact admin !!", 1)
                 LOGGER.error(f"Error occured during balance update. Manual adjustment needed for {username}({uid}) (see above): \n{e}")
                 time.sleep(2)
             finally:
@@ -264,12 +262,12 @@ def main():
                 if os.path.isfile(TEMP_BALANCESHEET_PATH):
                     os.remove(TEMP_BALANCESHEET_PATH)
 
-            lcd_screen.text_string(f"Total: {nbr_doses} doses, {total_cost:.2f}CHF", ST7920.LCD_LINE0)
-            lcd_screen.text_string(f"New Balance: {new_balance:.2f} CHF", ST7920.LCD_LINE1)
+            lcd.text(f"Total: {nbr_doses} doses, {total_cost:.2f}CHF", 1)
+            lcd.text(f"New Balance: {new_balance:.2f} CHF", 2)
             time.sleep(2)
 
-            lcd_screen.text_string("Than you for choosing MSRL Coffee Counter!", ST7920.LCD_LINE0)
-            lcd_screen.text_string("Enjoy your break!", ST7920.LCD_LINE1)
+            lcd.text("Than you for choosing MSRL Coffee Counter!", 1)
+            lcd.text("Enjoy your break!", 2)
 
             LOGGER.info(f"Process finished for {username}({uid})")
 

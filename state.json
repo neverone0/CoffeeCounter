@@ -5,6 +5,6 @@
   "pending_task": null,
   "task_args": null,
   "last_backup": null,
-  "upload_folder" : "./uploads"
+  "upload_folder" : "./uploads",
   "__comments": "mode: normal/maintenance"
 }

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import spidev
-import png
 import RPi.GPIO as GPIO
 from copy import deepcopy
 import time
