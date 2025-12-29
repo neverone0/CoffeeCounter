@@ -14,6 +14,7 @@ import logging
 import cowsay
 import json
 from logging.handlers import RotatingFileHandler
+from random import randrange
 
 class MonotonicFilter(logging.Filter):
     def filter(self, record):
@@ -45,6 +46,8 @@ RELAY_PIN = 12
 MSB_THRESHOLD = 100
 ON_TIME = 45
 SINGLE_DOSE_TIME = 7.5
+
+NEW_USER = {"Tag"}
 
 GPIO.setmode(GPIO.BOARD)
 GPIO.setup(CS_PIN, GPIO.OUT)
@@ -131,6 +134,8 @@ def update_balances(path_to_csv):
 
     LOGGER.info("Finished updating balance sheet.")
 
+def get_new_user_dict(tag_uid):
+    return {"TagId": tag_uid, "Name": f"NewUser{randrange(99)}", "Balance": 0.0, "LastUse": None, "Price": None, "Counter": 0}
 
 def main():
     setup_logging()
@@ -175,7 +180,8 @@ def main():
 
             time.sleep(0.1)
 
-
+            if uid not in balanceDF.loc[:,"TagId"]:
+                balanceDF.append(get_new_user_dict(uid), ignore_index=True)
 
             username = balanceDF.loc[uid, "Name"]
             balance = balanceDF.loc[uid, "Balance"]
@@ -194,8 +200,8 @@ def main():
                 LOGGER.warning(f"Low Balance warning: {balance}")
 
             lcd_screen.text_string(f"Balance: {balance:.2f}CHF", ST7920.LCD_LINE1)
-
             time.sleep(0.5)
+
 
             lcd_screen.text_string("Activating Relay", ST7920.LCD_LINE0)
             LOGGER.info(f"Activating Relay")
