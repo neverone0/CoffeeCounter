@@ -15,6 +15,7 @@ import cowsay
 import json
 from logging.handlers import RotatingFileHandler
 from random import randrange
+from pathlib import Path
 
 class MonotonicFilter(logging.Filter):
     def filter(self, record):
@@ -70,12 +71,13 @@ STATE = load_state()
 
 BALANCESHEET_PATH = "./Data/Balances.csv"
 TEMP_BALANCESHEET_PATH = "./Data/Balances_temp.csv"
-BACKUP_LOCATION = "./Data"
+BACKUP_LOCATION = "./Data/Backups"
 BACKUP_TIMER = 7200 # Once two hours
+TEMPLATE_LOCATION = "./Templates"
 
 def backup_csv():
     LOGGER.warning("Backing up balance sheet...")
-    backup_path = f"{BACKUP_LOCATION}/Backup/Balances_backup_{time.time()}.csv"
+    backup_path = f"{BACKUP_LOCATION}/Balances_backup_{time.time()}.csv"
     try:
         shutil.copy(BALANCESHEET_PATH, backup_path)
     except Exception as e:
@@ -138,6 +140,13 @@ def get_new_user_dict(tag_uid):
 def main():
     setup_logging()
 
+    LOGGER.info("Creating Data and Backup folders (if necessary)")
+    Path(BACKUP_LOCATION).mkdir(parents=True, exist_ok=True)
+
+    if not os.path.exists(BACKUP_LOCATION):
+        shutil.copyfile(f"{TEMPLATE_LOCATION}/Balance.csv.template", BALANCESHEET_PATH)
+        LOGGER.warning(f"Balances.csv did not yet exist, created new one from Balances.csv.template")
+
     reader = RFID(pin_irq = None)
     # Board Pins: SDA-24 , SCK-23, MOSI-19, MISO-21, IRQ-None, GND-6/9/20/25, RST-22, 3.3V-1/17
     lcd = LCD()
@@ -151,7 +160,7 @@ def main():
     LOGGER.info("loading balancesheet to memory")
     balanceDF  = pd.read_csv(BALANCESHEET_PATH, sep=",", header=0)
 
-    while (1):
+    while (True):
         STATE = load_state()
         if STATE["mode"] == "maintenance":
             STATE["mode_ack"]= STATE["mode"]
@@ -169,7 +178,7 @@ def main():
             backup_csv()
 
         try:
-            lcd.text(f"Scan Tag! ({price}CHF/Dose)  ", 1)
+            lcd.text(f"Scan Tag! ({PRICE_PER_DOSE}CHF/Dose)  ", 1)
             lcd.text("                  ", 2)
             lcd.text("Blame: " + lastUser, 2)
             uid = reader.get_uid()
