@@ -19,7 +19,8 @@ class MCP3201:
         GPIO.output(self.CS_PIN, 1)
         self.spi = spidev.SpiDev()
         self.spi.open(0,1)
-        self.spi.cshigh = True # use inverted CS
+        # I think this breaks something beacuse of a newer version of spidev
+        # self.spi.cshigh = True # use inverted CS
         self.spi.max_speed_hz = self.SPI_SPEED # set SPI clock to 1.8MHz, up from 125kHz
                
                             
