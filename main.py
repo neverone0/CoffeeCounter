@@ -182,8 +182,8 @@ def main():
             uid = reader.get_uid()
             LOGGER.info(f"UID: {uid}")
             if uid is None:
-                LOGGER.info("No Tag present")
-                raise Exception()
+                # Use this error to catch it cleanly
+                raise ImportError("No Tag present")
 
             time.sleep(0.1)
 
@@ -283,8 +283,12 @@ def main():
             time.sleep(2)
 
         except KeyboardInterrupt:
+            LOGGER.warning(f"Loop Terminated by Keyboard Interrupt")
             break
+        except ImportError as e:
+            LOGGER.info(f"{e}")
         except Exception as e:
+            LOGGER.error(f"Unexpected error:\n {e}")
             time.sleep(1)
 
 
