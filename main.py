@@ -179,8 +179,9 @@ def main():
             lcd.text(f"Scan Tag! ({PRICE_PER_DOSE}CHF/Dose)  ", 1)
             lcd.text("                  ", 2)
             lcd.text("Blame: " + lastUser, 2)
-            uid = reader.get_uid()
+            uid = reader.read_id()
             LOGGER.info(f"UID: {uid}")
+
             if uid is None:
                 # Use this error to catch it cleanly
                 raise ImportError("No Tag present")
