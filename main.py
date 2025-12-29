@@ -291,12 +291,12 @@ def main():
                 LOGGER.info(f"{e}")
                 time.sleep(1)
             except KeyboardInterrupt:
-                pass
+                break
         except Exception as e:
             try:
                 LOGGER.error(f"Unexpected error:\n {e}")
             except KeyboardInterrupt:
-                pass
+                break
 
 
     LOGGER.warning(cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup.\n Have a MOOtiful day.'))
