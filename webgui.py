@@ -5,9 +5,23 @@ from flask import Flask, request, render_template_string, redirect, url_for, abo
 from werkzeug.utils import secure_filename
 from functools import wraps
 
+
+# ------------------- Helper Funcs------------
+STATE_FILE = "state.json"
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {"mode": "normal", "pending_task": None, "task_args": None}
+    with open(STATE_FILE) as f:
+        return json.load(f)
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
 # ========== CONFIG ==========
-LOG_FILE = "./CoffeCounter.log"
-UPLOAD_FOLDER = "./uploads"
+STATE = load_state()
+LOG_FILE = STATE["logfile"]
+UPLOAD_FOLDER = STATE["upload_folder"]
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ADMIN_USER = "admin"
@@ -25,18 +39,6 @@ ALLOWED_COMMANDS = {
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-# ------------------- Helper Funcs------------
-STATE_FILE = "state.json"
-
-def load_state():
-    if not os.path.exists(STATE_FILE):
-        return {"mode": "normal", "pending_task": None, "task_args": None}
-    with open(STATE_FILE) as f:
-        return json.load(f)
-
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
 
 # ---------- BASIC AUTH ----------
 def check_auth(username, password):
@@ -126,6 +128,7 @@ def index():
     return render_template_string(
         TEMPLATE,
         log=log,
+        mode=STATE["mode"],
         commands=ALLOWED_COMMANDS.keys(),
         command_output="",
         upload_folder=UPLOAD_FOLDER
@@ -180,17 +183,17 @@ def run_command():
 @app.route("/toggle_mode", methods=["POST"])
 @requires_auth
 def toggle_mode():
-    state = load_state()
+    STATE = load_state()
 
-    if state["mode"] == "normal":
-        state["mode"] = "maintenance"
+    if STATE["mode"] == "normal":
+        STATE["mode"] = "maintenance"
     else:
-        state["mode"] = "normal"
-        state["pending_task"] = None
-        state["task_args"] = None
+        STATE["mode"] = "normal"
+        STATE["pending_task"] = None
+        STATE["task_args"] = None
 
-    save_state(state)
-    return redirect(url_for("index"))
+    save_state(STATE)
+    return redirect(url_for("                                                                                                                           index"))
 
 
 if __name__ == "__main__":
