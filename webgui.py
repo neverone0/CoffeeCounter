@@ -11,7 +11,7 @@ UPLOAD_FOLDER = "./uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ADMIN_USER = "admin"
-ADMIN_PASS = "changeme"   #  CHANGE THIS
+ADMIN_PASS = "CoffeeCounter_msrl"   #  CHANGE THIS
 HOST = "0.0.0.0"
 PORT = 5000
 

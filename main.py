@@ -4,7 +4,7 @@ import sys
 import RPi.GPIO as GPIO
 from rpi_lcd import LCD
 #TODO: change to Pn532 sensor for it to work
-from pirc522 import RFID
+from mfrc522 import SimpleMFRC522
 from current_sensor import MCP3201
 import time
 import pandas as pd
@@ -143,7 +143,7 @@ def main():
         shutil.copyfile(f"{TEMPLATE_LOCATION}/Balance.csv.template", BALANCESHEET_PATH)
         LOGGER.warning(f"Balances.csv did not yet exist, created new one from Balances.csv.template")
 
-    reader = RFID(pin_irq = None)
+    reader = SimpleMFRC522()
     # Board Pins: SDA-24 , SCK-23, MOSI-19, MISO-21, IRQ-None, GND-6/9/20/25, RST-22, 3.3V-1/17
     lcd = LCD()
     cur_sensor = MCP3201()
@@ -181,13 +181,14 @@ def main():
             lcd.text("                  ", 2)
             lcd.text("Blame: " + lastUser, 2)
             uid = reader.read_id()
-            LOGGER.info(f"UID: {uid}")
 
             if uid is None:
                 # Use this error to catch it cleanly
                 LOGGER.info(f"No Tag detected")
                 time.sleep(1)
                 continue
+            else:
+                LOGGER.info(f"UID: {uid}")
 
             time.sleep(0.1)
 
