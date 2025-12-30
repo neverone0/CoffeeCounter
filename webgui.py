@@ -118,11 +118,11 @@ pre{background:#111;color:#0f0;padding:10px}
 @app.route("/")
 @requires_auth
 def index():
-    # show last 200 lines of log
+    # show last 100 lines of log
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, "r") as f:
             lines = f.readlines()
-            log = "".join(lines[-200:])
+            log = "".join(lines[-100:])
     else:
         log = "(log file not found)"
 

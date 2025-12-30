@@ -136,6 +136,8 @@ def main():
 
     setup_logging()
 
+    LOGGER.warning(f"====================\n{time.time()}\n====================")
+
     LOGGER.info("Creating Data and Backup folders (if necessary)")
     Path(BACKUP_LOCATION).mkdir(parents=True, exist_ok=True)
 
@@ -299,6 +301,7 @@ def main():
 
     LOGGER.warning(f"\n{cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup.\n Have a MOOtiful day.')}")
     GPIO.cleanup()
+    LOGGER.warning("====================")
 
 if __name__ == "__main__":
     main()
