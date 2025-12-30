@@ -3,6 +3,7 @@
 import sys
 import RPi.GPIO as GPIO
 from rpi_lcd import LCD
+#TODO: change to Pn532 sensor for it to work
 from pirc522 import RFID
 from current_sensor import MCP3201
 import time
@@ -184,7 +185,9 @@ def main():
 
             if uid is None:
                 # Use this error to catch it cleanly
-                raise ImportError("No Tag present")
+                LOGGER.info(f"No Tag detected")
+                time.sleep(1)
+                continue
 
             time.sleep(0.1)
 
@@ -286,12 +289,6 @@ def main():
         except KeyboardInterrupt:
             LOGGER.warning(f"Loop Terminated by Keyboard Interrupt")
             break
-        except ImportError as e:
-            try:
-                LOGGER.info(f"{e}")
-                time.sleep(1)
-            except KeyboardInterrupt:
-                break
         except Exception as e:
             try:
                 LOGGER.error(f"Unexpected error:\n {e}")
@@ -299,7 +296,7 @@ def main():
                 break
 
 
-    LOGGER.warning(cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup.\n Have a MOOtiful day.'))
+    LOGGER.warning(f"\n{cowsay.get_output_string('cow', 'Exiting Program, calling GPIO cleanup.\n Have a MOOtiful day.')}")
     GPIO.cleanup()
 
 if __name__ == "__main__":
