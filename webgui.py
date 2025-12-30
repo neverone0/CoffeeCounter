@@ -118,6 +118,7 @@ pre{background:#111;color:#0f0;padding:10px}
 @app.route("/")
 @requires_auth
 def index():
+    STATE = load_state()
     # show last 100 lines of log
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, "r") as f:
