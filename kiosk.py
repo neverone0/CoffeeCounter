@@ -26,11 +26,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "CoffeeCounter_msrl"   #  Ah yes, CYbeR SeKUrIty
-HOST = "0.0.0.0"
-PORT = 5000
+HOST = "0.0.0.0" # CHANGE THIS TO 127.0.0.0 such that only displayed on pi
+PORT = 7000
 
 # Whitelisted admin commands (safer than arbitrary exec)
-# Adapt this for correct services
 ALLOWED_COMMANDS = {
     "restart_service": ["sudo", "systemctl", "restart", "myapp.service"],
     "check_disk": ["df", "-h"],
