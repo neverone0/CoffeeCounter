@@ -1,12 +1,14 @@
 import os
 import subprocess
 import json
+import time
 from flask import Flask, request, render_template, redirect, url_for, abort
 from werkzeug.utils import secure_filename
 from functools import wraps
 
 
 # ------------------- Helper Funcs------------
+# Maybe move the functions here to their own files
 STATE_FILE = "state.json"
 def load_state():
     if not os.path.exists(STATE_FILE):
@@ -17,6 +19,38 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
+
+class timer:
+    start_time = None
+    end_time = None
+    ended = None
+
+    def __init__(self, interval, immediate=True):
+        self.interval = interval
+        self.immediate = immediate
+        if self.immediate:
+            self.start()
+
+    def start(self):
+        self.start_time = time.time()
+        self.end_time = self.start_time + self.interval
+
+    def check_timeout(self):
+        ctime = time.time()
+        timeout = self.end_time <= time.time()
+        if timeout:
+            self.ended = ctime
+        return timeout
+
+    def has_ended(self):
+        return (self.ended is not None) or (self.end_time <= time.time())
+
+    def has_started(self):
+        return self.start_time is not None
+
+    def end(self):
+        self.ended = time.time()
+
 
 # ========== CONFIG ==========
 STATE = load_state()
@@ -97,15 +131,25 @@ def upload():
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     f.save(filepath)
 
+    mode_ack_timer = timer(60)
     while not STATE["mode"] == STATE["mode_ack"]:
         STATE = load_state()
+        if mode_ack_timer.check_timeout():
+            abort(408)
+    mode_ack_timer.end()
 
     STATE["pending_task"] = "update_balances"
     STATE["task_args"] = [filepath]
     save_state(STATE)
 
+    task_resp_timer = timer(300)
     while STATE["task_response"] is None:
         STATE = load_state()
+        if task_resp_timer.check_timeout():
+            abort(408)
+    task_resp_timer.end()
+
+    status, msg = STATE["task_response"]
 
     # TODO: Handle task responses
     # TODO: Show spinner while loading and running, pre-run summary and post-run summary. Wait for approval each time
@@ -137,7 +181,7 @@ def run_command():
     else:
         log = "(log file not found)"
 
-    return render_template_string(
+    return render_template(
         TEMPLATE,
         log=log,
         commands=ALLOWED_COMMANDS.keys(),
