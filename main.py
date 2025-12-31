@@ -81,9 +81,21 @@ def backup_csv():
         STATE["last_backup"] = time.time()
         save_state(STATE)
 
-def update_balances(path_to_csv):
-    """ Update balancesheet using another csv file. By default unknown IDs will generate a new entry
+# ============================= Task functions callable from webgui ===================================================
+def update_balances(*args):
+    """ Update balancesheet using another csv file.
     """
+    status = 100
+    msg = ""
+
+    if not (len(args) == 1):
+        status = 400
+        msg = "Expected 1 argument, got {len(args)}"
+        LOGGER.error(f"{status}: {msg}")
+        return status, msg
+
+
+    path_to_csv = args[0]
     LOGGER.info("Updating balance sheet...")
     balanceDF = pd.read_csv(BALANCESHEET_PATH)
     balance_changes_df = pd.read_csv(path_to_csv)
@@ -111,17 +123,30 @@ def update_balances(path_to_csv):
             unknown_entries.append(row.todict)
             LOGGER.error(f"Tag id {tag_id} not found (Name: {row['Name']}, BalanceChange: {row['BalanceChange']}), Price {row['Price']}")
 
+    if len(unknown_entries) > 0:
+        status = 207
+        msg = f"Partial Success, Unknown IDs present ({[r['TagId'] for r in unknown_entries]})"
+    else:
+        status = 100
+        msg= "Sucessfully Updated Balance sheet"
+
     shutil.copyfile(BALANCESHEET_PATH, TEMP_BALANCESHEET_PATH)
     try:
         balanceDF.to_csv(BALANCESHEET_PATH, sep=",", header=True, index=False)
     except Exception as e:
-        LOGGER.error(f"Error occured during balance update. Please try again. \n {e}")
+        status = 500
+        msg = f"Error occured during balance update. Please try again. \n {e}"
+        LOGGER.error(f"{status}: {msg}")
     finally:
         LOGGER.info("Delete temporary balancesheet")
         if os.path.isfile(TEMP_BALANCESHEET_PATH):
             os.remove(TEMP_BALANCESHEET_PATH)
 
     LOGGER.info("Finished updating balance sheet.")
+
+    return status, msg
+
+# ======================================================================================================================
 
 def get_new_user_dict(tag_uid):
     return {"TagId": tag_uid, "Name": f"NewUser{randrange(99)}", "Balance": 0.0, "LastUse": None, "Price": None, "Counter": 0}
@@ -151,7 +176,7 @@ def main():
     cur_sensor = MCP3201()
     lastUser = ""
 
-    LOGGER.warning(f"\n\n{cowsay.get_output_string('cow', "Starting Coffee Counter")}\n\n")
+    LOGGER.warning(f"\n\n{cowsay.get_output_string('cow', 'Hi I\'m Cownter the Coffee-Counter,\n here to be your coffee counting counter cow!')}\n\n")
 
     backup_csv()
 
@@ -160,6 +185,7 @@ def main():
 
     while (True):
         STATE = load_state()
+        # --------------- Maintenance-----------------
         if STATE["mode"] == "maintenance":
             STATE["mode_ack"]= STATE["mode"]
             save_state(STATE)
@@ -169,15 +195,41 @@ def main():
             # Suspend while in maintenance mode
             while STATE["mode"] == "maintenance":
                 STATE = load_state()
+
+                if STATE["pending_task"] is not None and STATE["task_args"] is not None and STATE["task_response"] is None:
+                    LOGGER.warning(f"Task recieved with args: {STATE['pending_task']}({STATE['task_args']})")
+                    error = None
+                    try:
+                        status, msg = locals()[STATE['pending_task']](*STATE['task_args'])
+                    except KeyError as e:
+                        status = 400
+                        msg = "Received Task does not exist"
+                        error = e
+                    except Exception as e:
+                        status = 400
+                        msg = "Unexpected Error"
+                        error = e
+                    finally:
+                        if error is None:
+                            LOGGER.warning(f"{status}: {msg}")
+                        else:
+                            LOGGER.error(f"{status}: {msg}: {e}")
+                        STATE["task_response"] = (status, msg)
+                        STATE["pending_task"] = None
+                        STATE["task_args"] = None
+                        save_state(STATE)
+                        LOGGER.info(f"Received Task exited.")
                 pass
             LOGGER.warning(f"Loop continued. Reload balancesheet to memory.")
             balanceDF = pd.read_csv(BALANCESHEET_PATH, sep=",", header=0)
             STATE["mode_ack"]= STATE["mode"]
             LOGGER.warning(f"Exiting maintenance mode.")
 
+        # ----------------- Backup ----------------------
         if ((STATE["last_backup"] is None) or ((time.time() - STATE["last_backup"]) > BACKUP_TIMER)):
             backup_csv()
 
+        # --------------- Regular loop ---------------------------
         try:
             lcd.text(f"Scan Tag! ({PRICE_PER_DOSE}CHF/Dose)  ", 1)
             lcd.text("                  ", 2)

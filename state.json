@@ -4,7 +4,8 @@
   "mode_ack"  : "normal",
   "pending_task": null,
   "task_args": null,
+  "task_response": null,
   "last_backup": null,
   "upload_folder" : "./uploads",
-  "__comments": "mode: normal/maintenance"
+  "__comments": "mode: normal/maintenance, task_args: list of arguments such taht readable by *args, task_respopnse: use http codes"
 }

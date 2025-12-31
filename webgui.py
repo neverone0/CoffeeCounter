@@ -1,7 +1,7 @@
 import os
 import subprocess
 import json
-from flask import Flask, request, render_template_string, redirect, url_for, abort
+from flask import Flask, request, render_template, redirect, url_for, abort
 from werkzeug.utils import secure_filename
 from functools import wraps
 
@@ -37,8 +37,8 @@ ALLOWED_COMMANDS = {
     "list_uploads": ["ls", "-al", UPLOAD_FOLDER]
 }
 # ============================
-
-app = Flask(__name__)
+TEMPLATE = "webgui.html"
+app = Flask(__name__, template_folder="html")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # ---------- BASIC AUTH ----------
@@ -61,60 +61,6 @@ def requires_auth(f):
     return decorated
 
 
-# ---------- PAGES ----------
-TEMPLATE = """
-<!doctype html>
-<html>
-<head>
-<title>Raspberry Pi Admin</title>
-<style>
-body{font-family:Arial;margin:20px}
-pre{background:#111;color:#0f0;padding:10px}
-.card{border:1px solid #ccc;margin-bottom:20px;padding:10px}
-</style>
-</head>
-<body>
-<h1>Raspberry Pi Admin Panel</h1>
-
-<div class="card">
-<h3>Log Viewer</h3>
-<pre>{{ log }}</pre>
-</div>
-
-<div class="card">
-<h3>Upload File</h3>
-<form method="post" enctype="multipart/form-data" action="{{ url_for('upload') }}">
-<input type="file" name="file">
-<button type="submit">Upload</button>
-</form>
-<p>Uploaded files are stored in: {{ upload_folder }}</p>
-</div>
-
-<div class="card">
-<h3>Admin Actions</h3>
-<form method="post" action="{{ url_for('toggle_mode') }}">
-<button>
-{% if mode == "normal" %}Enable Maintenance{% else %}Disable Maintenance{% endif %}
-</button>
-</form>
-<p>Current mode: <b>{{ mode }}</b></p>
-<form method="post" action="{{ url_for('run_command') }}">
-<select name="command">
-{% for cmd in commands %}
-<option value="{{ cmd }}">{{ cmd }}</option>
-{% endfor %}
-</select>
-<button type="submit">Run</button>
-</form>
-<pre>{{ command_output }}</pre>
-</div>
-
-</body>
-</html>
-
-"""
-
-
 @app.route("/")
 @requires_auth
 def index():
@@ -127,7 +73,7 @@ def index():
     else:
         log = "(log file not found)"
 
-    return render_template_string(
+    return render_template(
         TEMPLATE,
         log=log,
         mode=STATE["mode"],
@@ -140,12 +86,29 @@ def index():
 @app.route("/upload", methods=["POST"])
 @requires_auth
 def upload():
+    STATE = load_state()
+
     if "file" not in request.files:
         abort(400)
-
     f = request.files["file"]
     filename = secure_filename(f.filename)
-    f.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+    if os.path.splitext(filename)[1] != ".csv":
+        abort(422)
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    f.save(filepath)
+
+    while not STATE["mode"] == STATE["mode_ack"]:
+        STATE = load_state()
+
+    STATE["pending_task"] = "update_balances"
+    STATE["task_args"] = [filepath]
+    save_state(STATE)
+
+    while STATE["task_response"] is None:
+        STATE = load_state()
+
+    # TODO: Handle task responses
+    # TODO: Show spinner while loading and running, pre-run summary and post-run summary. Wait for approval each time
 
     return redirect(url_for("index"))
 

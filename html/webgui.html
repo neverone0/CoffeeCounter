@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+    <title>CoffeeCounter Admin</title>
+
+    <style>
+        body {
+            font-family: Arial;
+            margin: 20px
+        }
+
+        pre {
+            background: #111;
+            color: #0f0;
+            padding: 10px
+        }
+
+        .card {
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            padding: 10px
+        }
+
+        body.normal {
+            background: #e8fff0;
+        }
+
+        body.maintenance {
+            background: #fff5cc;
+        }
+
+        body.error {
+            background: #ffe5e5;
+        }
+    </style>
+
+</head>
+
+<body class="{{ mode }}">
+<h1>CoffeeCounter Admin Panel</h1>
+
+<div class="card">
+    <h3>Admin Actions</h3>
+    <form method="post" action="{{ url_for('toggle_mode') }}">
+        <button>
+            {% if mode == "normal" %}Enable Maintenance{% else %}Disable Maintenance{% endif %}
+        </button>
+    </form>
+    <p>Current mode: <b>{{ mode }}</b></p>
+
+    <h3>Upload CSV to update Balance Sheet</h3>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('upload') }}">
+        <input type="file" name="file" accept=".csv">
+        <button type="submit">Upload</button>
+    </form>
+    <p>Last 10 uploaded files are stored in: {{ upload_folder }}</p>
+    <p>Please us the BalanceChange template in the Template folder to apply changes!</p>
+
+    <form method="post" action="{{ url_for('run_command') }}">
+        <select name="command">
+            {% for cmd in commands %}
+            <option value="{{ cmd }}">{{ cmd }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Run</button>
+    </form>
+    <pre>{{ command_output }}</pre>
+</div>
+
+<div class="card">
+    <h3>Log Viewer</h3>
+    <pre>{{ log }}</pre>
+</div>
+
+</body>
+</html>
